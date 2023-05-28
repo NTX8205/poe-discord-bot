@@ -15,7 +15,7 @@ const getURLFromGGC = async searchJsonReady => {
         }
         // const delay = time => new Promise(resolve => setTimeout(resolve, time))
 
-        const res = await fetch('http://web.poe.garena.tw/api/trade/exchange/卡蘭德', requestOption) //TODO 每季要改成新聯盟 
+        const res = await fetch([url='https://web.poe.garena.tw/api/trade/exchange/熔火聯盟'], requestOption) //TODO 每季要改成新聯盟 
         // await delay(3000)
         const data = await res.json()
 
