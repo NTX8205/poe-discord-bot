@@ -64,7 +64,7 @@ client.on('ready', async() => {
             //送出的頻道
             channel.send({ embeds: [finalEmbed] });
             // testC.send({embeds:[finalEmbed]})
-            channel3.send({ embeds: [finalEmbed] });
+            // channel3.send({ embeds: [finalEmbed] });
         }, 240000);
     } catch (e) {
         console.log(e);
