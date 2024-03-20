@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { getEmbedFromExchange } = require('../../src/embed')
+const { getEmbedFromExchange } = require('../src/embed')
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('price')

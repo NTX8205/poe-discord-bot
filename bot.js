@@ -1,4 +1,5 @@
-const { 
+const cron = require('node-cron');
+const {
     Client,
     GatewayIntentBits,
     Collection,
@@ -8,7 +9,16 @@ require('dotenv/config')
 const fs = require('node:fs');
 const path = require('node:path');
 const { getEmbedFromExchange } = require('./src/embed')
+const {
+    chromeQuery,
+    jewellersQuery,
+    altQuery,
+} = require('./src/currencySearchQuery');
+const {
+    hourlyAlertByCurrencyQuery,
+} = require('./controller/currencyNotification');
 
+let userAlertArray = ['385605689017630721'];
 
 const client = new Client({
     intents: [
@@ -18,69 +28,128 @@ const client = new Client({
     ]
 });
 
-//add slash commands
-client.commands = new Collection();
-const foldersPath = path.join(__dirname, 'commands');
-const commandFolders = fs.readdirSync(foldersPath);
 
-for (const folder of commandFolders) {
-    const commandsPath = path.join(foldersPath, folder);
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        const command = require(filePath);
-        // Set a new item in the Collection with the key as the command name and the value as the exported module
-        if ('data' in command && 'execute' in command) {
-            client.commands.set(command.data.name, command);
-        } else {
-            console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
-        }
-    }
-}
+// client.on('interactionCreate', (interaction) => {
+//     if (!interaction.isChatInputCommand()) return;
 
+//     const user = interaction.user.id
 
-client.on('ready', async() => {
+//     if (interaction.commandName === '開') {
+//         console.log(`${user} 使用開啟通知功能`);
+
+//         interaction.reply(`<@${user}> 已開啟通知`);
+
+//         if (!userAlertArray.includes(user)) {
+//             userAlertArray.push(user);
+//         }
+//     }
+
+//     if (interaction.commandName === '關') {
+//         console.log(`${user} 使用關閉通知功能`);
+
+//         interaction.reply(`<@${user}> 已關閉通知`);
+//         userAlertArray = userAlertArray.filter(existingId => existingId !== user);
+//     }
+// });
+
+client.on('ready', async () => {
     console.log('Ready to start');
-    
-    //定時送出訊息的頻道ID，可多個
+
+    //定時送出訊息的頻道ID，可以任意增減 
     const channel = client.channels.cache.find(channel => channel.id === process.env.CHANNEL_ID);
     const testC = client.channels.cache.find(channel => channel.id === process.env.CHANNEL2_ID);
     const channel3 = client.channels.cache.find(channel => channel.id === process.env.CHANNEL3_ID);
-    
+
     // 原作者使用，目前無使用
     // const channel2 = client.channels.cache.find(channel2 => channel2.id === process.env.PAYED_CHANNEL_ID)
-    
-    // send msg every x milliseconds
-    // 可以任意增減
-    // 目前設定 : 4分鐘定時抓取資料
-    try {
-        setInterval( async() => {
+    // const testChannel = client.channels.cache.find(test => test.id === '1180885277741420654')
+
+    // 每 x 毫秒發送訊息
+    // 目前設定 : 4分鐘 (240000 ms) 定時抓取資料
+    setInterval(async () => {
+        try {
             const finalEmbed = await getEmbedFromExchange();
-            
+
             console.log('🚀 ------------------------------------------------------------------🚀');
             console.log('🚀 ~ file: bot.js ~ for vps log', 'bot is fine now');
             console.log('🚀 ------------------------------------------------------------------🚀');
-    
+
             //送出的頻道
             channel.send({ embeds: [finalEmbed] });
             // testC.send({embeds:[finalEmbed]})
             // channel3.send({ embeds: [finalEmbed] });
-        }, 240000);
-    } catch (e) {
-        console.log(e);
-    }
+        } catch (error) {
+            console.log(new Date());
+            console.error('An error occurred:', error);
+        }
+    }, 240000);
 
-    // 底下需要刪除，否則沒有加入PAYED_CHANNEL_ID會報錯
-    // setInterval( async() => {
-    //     const finalEmbed = await getEmbedFromExchange();
+    //! 底下沒有加入 PAYED_CHANNEL_ID 需要註解或刪除，否則會報錯
+    // setInterval(async () => {
+    //     try {
+    //         const finalEmbed = await getEmbedFromExchange();
 
-    //     console.log('🚀 ------------------------------------------------------------------🚀');
-    //     console.log('🚀 ~ file: bot.js ~ for vps log', 'channel2 is fine now');
-    //     console.log('🚀 ------------------------------------------------------------------🚀');
+    //         console.log('🚀 ------------------------------------------------------------------🚀');
+    //         console.log('🚀 ~ file: bot.js ~ for vps log', 'channel2 is fine now');
+    //         console.log('🚀 ------------------------------------------------------------------🚀');
 
-    //     channel2.send({ embeds: [finalEmbed] }); 
+    //         channel2.send({ embeds: [finalEmbed] });
+    //     } catch (error) {
+    //         console.log(new Date());
+    //         console.error('An error occurred:', error);
+    //     }
     // }, 600000);
     // 刪到這裡
+
+    // 買賣通知
+    const historyAlerts = new Map();
+
+    // 每小時執行一次的函數
+    setInterval(async () => {
+        console.log('hourly alert started at:', new Date());
+        await hourlyAlertByCurrencyQuery(jewellersQuery, testChannel, userAlertArray, historyAlerts);
+        await hourlyAlertByCurrencyQuery(altQuery, testChannel, userAlertArray, historyAlerts);
+        await hourlyAlertByCurrencyQuery(chromeQuery, testChannel, userAlertArray, historyAlerts);
+    }, 3600000);
+
+    // 每天午夜重置歷史記錄
+    cron.schedule('0 0 * * *', () => {
+        historyAlerts.clear();
+    }, {
+        scheduled: true,
+        timezone: "Asia/Taipei"
+    });
+
+
+    // TODO: 12/27 有空的話完成下面的修正
+    // function scheduleHourlyTasks() {
+    //     const now = new Date();
+    //     const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0, 0);
+    //     const delay = nextHour - now;
+
+    //     setTimeout(() => {
+    //         hourlyAlertByCurrencyQuery(jewellersQuery, testChannel, userAlertArray, historyAlerts);
+    //         hourlyAlertByCurrencyQuery(altQuery, testChannel, userAlertArray, historyAlerts);
+    //         hourlyAlertByCurrencyQuery(chromeQuery, testChannel, userAlertArray, historyAlerts);
+
+    //         setInterval(() => {
+    //             hourlyAlertByCurrencyQuery(jewellersQuery, testChannel, userAlertArray, historyAlerts);
+    //             hourlyAlertByCurrencyQuery(altQuery, testChannel, userAlertArray, historyAlerts);
+    //             hourlyAlertByCurrencyQuery(chromeQuery, testChannel, userAlertArray, historyAlerts);
+    //         }, 3600000); // 1小时
+    //     }, delay);
+    // }
+
+    // // 初始化定时任务
+    // scheduleHourlyTasks();
+
+    // // 每天午夜重置历史记录
+    // cron.schedule('0 0 * * *', () => {
+    //     historyAlerts.clear();
+    // }, {
+    //     scheduled: true,
+    //     timezone: "Asia/Taipei"
+    // });
 });
 
 //使用 !+文字實現指令 (Ex : !d)
@@ -104,18 +173,44 @@ client.on('messageCreate', async (msg) => {
             }
         }
     } catch (err) {
-        console.log('OnMessageError', err);
+        console.error('An error occurred:', err);
     }
-}); 
+});
 
-// slash commands reply
-client.on(Events.InteractionCreate, async interaction => {
+
+// 指令
+client.commands = new Collection();
+
+const commands = [];
+
+// 讀取 commands 資料夾下的 js 檔案
+const commandsPath = path.join(__dirname, "commands");
+const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
+
+// 將指令加入 Collection
+for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+
+    // 在 Collection 中以指令名稱作為 key，指令模組作為 value 加入
+    if ("data" in command && "execute" in command) {
+        client.commands.set(command.data.name, command);
+    } else {
+        console.log(`[警告] ${filePath} 中的指令缺少必要的 "data" 或 "execute" 屬性。`);
+    }
+
+    // 存進 commands array
+    commands.push(command.data.toJSON());
+}
+
+// 當收到互動事件時，檢查是否為指令，若是則執行該指令
+client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const command = interaction.client.commands.get(interaction.commandName);
 
     if (!command) {
-        console.error(`No command matching ${interaction.commandName} was found.`);
+        console.error(`找不到指令 ${interaction.commandName}。`);
         return;
     }
 
@@ -124,11 +219,36 @@ client.on(Events.InteractionCreate, async interaction => {
     } catch (error) {
         console.error(error);
         if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
+            await interaction.followUp({
+                content: "執行指令時發生錯誤！",
+                ephemeral: true,
+            });
         } else {
-            await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+            await interaction.reply({
+                content: "執行指令時發生錯誤！",
+                ephemeral: true,
+            });
         }
     }
+});
+
+// 註冊指令
+const registerCommands = async (client) => {
+    try {
+        if (client.application) {
+            console.log(`Started refreshing ${commands.length} application (/) commands.`);
+            const data = await client.application.commands.set(commands);
+            console.log(`Successfully reloaded ${data.size} application (/) commands.`);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+// 當 client 就緒時顯示訊息
+client.once(Events.ClientReady, async (client) => {
+    console.log(`已就緒！已登入帳號：${client.user.tag}`);
+    await registerCommands(client);
 });
 
 client.login(process.env.TOKEN);
